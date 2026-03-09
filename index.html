@@ -252,12 +252,14 @@ canvas{max-height:300px;}
           <select id="f-weight"><option value="">— Sélectionner —</option></select></div>
         <div class="fg"><label class="fl">📍 Lieu / Concurrent / Marché</label>
           <select id="f-location"><option value="">— Sélectionner —</option></select></div>
-        <div class="fg full"><label class="fl">💰 Prix (HTG ou USD)</label>
-          <input type="number" id="f-price" placeholder="0.00" min="0" step="0.01"/></div>
+        <div class="fg"><label class="fl">💰 Prix en Gros (HTG/USD)</label>
+          <input type="number" id="f-price-gros" placeholder="0.00" min="0" step="0.01"/></div>
+        <div class="fg"><label class="fl">🏪 Prix en Détail (HTG/USD)</label>
+          <input type="number" id="f-price-detail" placeholder="0.00" min="0" step="0.01"/></div>
         <div class="fg full"><label class="fl">📝 Notes (optionnel)</label>
           <textarea id="f-note" rows="3" placeholder="ex. prix promotionnel, emballage endommagé, lot spécial…"></textarea></div>
       </div>
-      <div class="fnote">* Enregistré par, Localisation, Date, Produit, Lieu et Prix sont obligatoires</div>
+      <div class="fnote">* Enregistré par, Localisation, Date, Produit, Lieu et au moins un Prix sont obligatoires</div>
       <button id="sbtn" onclick="doSubmit()" disabled>Soumettre la saisie →</button>
     </div>
   </div>
@@ -542,7 +544,8 @@ function pushRow(row){
     id:row.id, recorder:row.recorder, branch:row.branch,
     date:row.date, product:row.product, brand:row.brand||'',
     weight:row.weight||'', location:row.location,
-    price:row.price, note:row.note||''
+    priceGros:row.priceGros||0, priceDetail:row.priceDetail||0,
+    note:row.note||''
   },function(d,err){
     if(!err)setSS('synced','Synchronisé ✓');
   });
@@ -614,7 +617,7 @@ if(gsUrl){
   loadSheet();
 }else{setSS('idle','Non connecté');}
 buildSel();updateCnt();
-['f-rec','f-date','f-product','f-location','f-branch','f-price'].forEach(function(id){
+['f-rec','f-date','f-product','f-location','f-branch','f-price-gros','f-price-detail'].forEach(function(id){
   var el=document.getElementById(id);
   if(el){el.addEventListener('input',chk);el.addEventListener('change',chk);}
 });
@@ -660,17 +663,22 @@ function show(i){
 //  SUBMIT
 // ══════════════════════════════════════════
 function chk(){
+  var pg=document.getElementById('f-price-gros').value;
+  var pd=document.getElementById('f-price-detail').value;
   document.getElementById('sbtn').disabled=!(
     document.getElementById('f-rec').value.trim()&&
     document.getElementById('f-date').value&&
     document.getElementById('f-product').value&&
     document.getElementById('f-location').value&&
     document.getElementById('f-branch').value&&
-    document.getElementById('f-price').value
+    (pg||pd)
   );
 }
 
 function doSubmit(){
+  var pg=parseFloat(document.getElementById('f-price-gros').value)||0;
+  var pd=parseFloat(document.getElementById('f-price-detail').value)||0;
+  if(!pg&&!pd)return;
   var r={
     id:Date.now(),
     recorder:document.getElementById('f-rec').value.trim(),
@@ -680,10 +688,11 @@ function doSubmit(){
     brand:document.getElementById('f-brand').value,
     weight:document.getElementById('f-weight').value,
     location:document.getElementById('f-location').value,
-    price:parseFloat(document.getElementById('f-price').value),
+    priceGros:pg,
+    priceDetail:pd,
     note:document.getElementById('f-note').value
   };
-  if(!r.recorder||!r.date||!r.product||!r.location||!r.branch||isNaN(r.price))return;
+  if(!r.recorder||!r.date||!r.product||!r.location||!r.branch)return;
   var btn=document.getElementById('sbtn');
   btn.textContent='⏳ Envoi…';btn.classList.add('sending');btn.disabled=true;
   records.unshift(r);sv('primo-records',records);updateCnt();
@@ -692,7 +701,7 @@ function doSubmit(){
     btn.textContent='✓ Saisie enregistrée !';btn.classList.remove('sending');btn.classList.add('ok');
     setTimeout(function(){
       btn.textContent='Soumettre la saisie →';btn.classList.remove('ok');
-      ['f-product','f-brand','f-weight','f-branch','f-location','f-price','f-note'].forEach(function(id){document.getElementById(id).value='';});
+      ['f-product','f-brand','f-weight','f-branch','f-location','f-price-gros','f-price-detail','f-note'].forEach(function(id){document.getElementById(id).value='';});
       chk();
     },1800);
   },600);
@@ -701,7 +710,12 @@ function doSubmit(){
 function updateCnt(){document.getElementById('ecount').textContent=records.length+' entrée'+(records.length!==1?'s':'');}
 
 function delRec(id){
-  if(!confirm('Supprimer cette entrée ?'))return;
+  var pin=prompt('🔐 Code administrateur requis pour supprimer :');
+  if(pin===null)return;
+  if(pin!=='PRIMO2026'){
+    alert('❌ Code incorrect. Contactez Ricarl Nozine pour supprimer une entrée.');
+    return;
+  }
   records=records.filter(function(r){return r.id!=id;});
   sv('primo-records',records);updateCnt();
   if(gsUrl)delFromSheet(id);
@@ -721,7 +735,7 @@ function renderRec(){
   if(!f.length){el.innerHTML=emptyHTML('📦','Aucune entrée. Utilisez l\'onglet Saisie.');return;}
   el.innerHTML='<div class="twrap"><table><thead><tr>'+
     '<th>Enregistré par</th><th>Localisation</th><th>Date</th><th>Produit</th>'+
-    '<th>Marque</th><th>Poids</th><th>Lieu / Concurrent</th><th>Prix</th><th>Notes</th><th></th>'+
+    '<th>Marque</th><th>Poids</th><th>Lieu / Concurrent</th><th>Prix Gros</th><th>Prix Détail</th><th>Notes</th><th></th>'+
     '</tr></thead><tbody>'+
     f.map(function(r){return '<tr>'+
       '<td><strong style="color:var(--text)">'+esc(r.recorder||'—')+'</strong></td>'+
@@ -731,7 +745,8 @@ function renderRec(){
       '<td>'+esc(r.brand||'—')+'</td>'+
       '<td>'+esc(r.weight||'—')+'</td>'+
       '<td><span class="dotrow"><span class="dot" style="background:'+lc(r.location)+'"></span>'+esc(r.location)+'</span></td>'+
-      '<td class="pcell">'+parseFloat(r.price).toFixed(2)+'</td>'+
+      '<td class="pcell">'+(r.priceGros?r.priceGros.toFixed(2):'—')+'</td>'+
+      '<td class="pcell" style="color:#FFB347">'+(r.priceDetail?r.priceDetail.toFixed(2):'—')+'</td>'+
       '<td class="ncell" title="'+esc(r.note||'')+'">'+esc(r.note||'—')+'</td>'+
       '<td><button class="dbtn" onclick="delRec('+r.id+')">✕</button></td>'+
     '</tr>';}).join('')+
