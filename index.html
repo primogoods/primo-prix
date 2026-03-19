@@ -527,35 +527,10 @@ function jsonp(params, cb, timeoutMs){
 }
 
 // ══════════════════════════════════════════
-//  CONFIG SYNC (products, brands, weights, branches, locs)
+//  CONFIG SYNC — one item per JSONP call (no large payloads)
 // ══════════════════════════════════════════
-function saveConfig(key, data){
-  if(!gsUrl) return;
-  jsonp({action:'saveConfig', key:key, value:JSON.stringify(data)}, function(){}, 8000);
-}
 
-function forceSyncConfig(){
-  var msg = document.getElementById('sync-cfg-msg');
-  msg.textContent = '🔄 Envoi en cours…';
-  var keys = ['products','brands','weights','branches','locs'];
-  var vals = [products, brands, weights, branches, locs];
-  var done = 0;
-  var errors = 0;
-  keys.forEach(function(k, i){
-    jsonp({action:'saveConfig', key:k, value:JSON.stringify(vals[i])}, function(d, err){
-      done++;
-      if(err) errors++;
-      if(done === keys.length){
-        if(errors === 0){
-          msg.textContent = '✅ Listes synchronisées avec Google Sheets !';
-        } else {
-          msg.textContent = '⚠️ ' + errors + ' erreur(s) — vérifiez la connexion.';
-        }
-      }
-    }, 10000);
-  });
-}
-
+// Called on startup: load lists from sheet, fall back to localStorage defaults
 function loadConfig(cb){
   if(!gsUrl){ cb(); return; }
   jsonp({action:'readConfig'}, function(d, err){
@@ -568,8 +543,58 @@ function loadConfig(cb){
       if(cfg.locs     && cfg.locs.length)    { locs     = cfg.locs;     sv('primo-locs',     locs);     }
     }
     cb();
-  }, 10000);
+  }, 12000);
 }
+
+// Add one item to sheet config (tiny URL — always works)
+function configAdd(type, value, extra){
+  if(!gsUrl) return;
+  jsonp({action:'addConfig', type:type, value:value, extra:extra||''}, function(){}, 8000);
+}
+
+// Remove one item from sheet config
+function configRemove(type, value){
+  if(!gsUrl) return;
+  jsonp({action:'removeConfig', type:type, value:value}, function(){}, 8000);
+}
+
+// Force push ALL local lists to sheet (used by the sync button)
+function forceSyncConfig(){
+  if(!gsUrl) return;
+  var msg = document.getElementById('sync-cfg-msg');
+  msg.textContent = '🔄 Envoi en cours…';
+
+  // Build list of all items to push
+  var items = [];
+  products.forEach(function(v){ items.push({action:'addConfig',type:'product',value:v,extra:''}); });
+  brands.forEach(function(v){   items.push({action:'addConfig',type:'brand',  value:v,extra:''}); });
+  weights.forEach(function(v){  items.push({action:'addConfig',type:'weight', value:v,extra:''}); });
+  branches.forEach(function(v){ items.push({action:'addConfig',type:'branch', value:v,extra:''}); });
+  locs.forEach(function(l){     items.push({action:'addConfig',type:'loc',    value:l.name,extra:l.color}); });
+
+  var done=0, errors=0;
+  function next(){
+    if(done >= items.length){
+      if(errors===0){
+        msg.textContent = '✅ Listes synchronisées !';
+      } else {
+        msg.textContent = '⚠️ '+errors+' erreur(s). Réessayez.';
+      }
+      return;
+    }
+    var item = items[done];
+    jsonp(item, function(d, err){
+      if(err) errors++;
+      done++;
+      msg.textContent = '🔄 '+done+'/'+items.length+'…';
+      setTimeout(next, 150); // small delay between calls
+    }, 8000);
+  }
+  next();
+}
+
+// Old saveConfig stub — replaced by individual add/remove below
+function saveConfig(key, data){ /* no-op — use configAdd/configRemove instead */ }
 
 function loadSheet(){
   if(!gsUrl){setSS('idle','Non connecté');return;}
@@ -931,38 +956,69 @@ function rLL(cid,arr){
   document.getElementById(cid).innerHTML=arr.map(function(l,i){return'<div class="irow"><input type="text" value="'+esc(l.name)+'" onchange="upLN('+i+',this.value)" onblur="flash(\'sv-locations\')"/><input type="color" class="cswatch" value="'+l.color+'" oninput="upLC('+i+',this.value)" title="Changer la couleur"/><button class="btn-rm" onclick="rmL('+i+')">✕</button></div>';}).join('');
 }
 function upS(key,i,val){
-  if(key==='products'){products[i]=val;sv('primo-products',products);saveConfig('products',products);}
-  if(key==='brands')  {brands[i]=val;  sv('primo-brands',brands);  saveConfig('brands',brands);}
-  if(key==='weights') {weights[i]=val; sv('primo-weights',weights); saveConfig('weights',weights);}
-  if(key==='branches'){branches[i]=val;sv('primo-branches',branches);saveConfig('branches',branches);}
+  var typeMap={products:'product',brands:'brand',weights:'weight',branches:'branch'};
+  var arr={products:products,brands:brands,weights:weights,branches:branches}[key];
+  var oldVal=arr[i];
+  arr[i]=val;
+  sv('primo-'+key, arr);
+  // Remove old value, add new value
+  configRemove(typeMap[key], oldVal);
+  configAdd(typeMap[key], val, '');
   buildSel();
 }
 function rmS(key,i){
   if(!confirm('Supprimer ?'))return;
-  if(key==='products'){products.splice(i,1);sv('primo-products',products);saveConfig('products',products);buildSel();rSL('sl-products',products,'products');}
-  if(key==='brands')  {brands.splice(i,1);  sv('primo-brands',brands);  saveConfig('brands',brands);  buildSel();rSL('sl-brands',brands,'brands');}
-  if(key==='weights') {weights.splice(i,1); sv('primo-weights',weights); saveConfig('weights',weights); buildSel();rSL('sl-weights',weights,'weights');}
-  if(key==='branches'){branches.splice(i,1);sv('primo-branches',branches);saveConfig('branches',branches);buildSel();rSL('sl-branches',branches,'branches');}
+  var typeMap={products:'product',brands:'brand',weights:'weight',branches:'branch'};
+  var arr={products:products,brands:brands,weights:weights,branches:branches}[key];
+  var val=arr[i];
+  arr.splice(i,1);
+  sv('primo-'+key, arr);
+  configRemove(typeMap[key], val);
+  buildSel();
+  var slMap={products:'sl-products',brands:'sl-brands',weights:'sl-weights',branches:'sl-branches'};
+  rSL(slMap[key], arr, key);
   flash('sv-'+key);
 }
 function addS(key,iid){
   var val=document.getElementById(iid).value.trim();if(!val)return;
-  if(key==='products'){products.push(val);sv('primo-products',products);saveConfig('products',products);buildSel();rSL('sl-products',products,'products');}
-  if(key==='brands')  {brands.push(val);  sv('primo-brands',brands);  saveConfig('brands',brands);  buildSel();rSL('sl-brands',brands,'brands');}
-  if(key==='weights') {weights.push(val); sv('primo-weights',weights); saveConfig('weights',weights); buildSel();rSL('sl-weights',weights,'weights');}
-  if(key==='branches'){branches.push(val);sv('primo-branches',branches);saveConfig('branches',branches);buildSel();rSL('sl-branches',branches,'branches');}
+  var typeMap={products:'product',brands:'brand',weights:'weight',branches:'branch'};
+  var arr={products:products,brands:brands,weights:weights,branches:branches}[key];
+  arr.push(val);
+  sv('primo-'+key, arr);
+  configAdd(typeMap[key], val, '');
+  buildSel();
+  var slMap={products:'sl-products',brands:'sl-brands',weights:'sl-weights',branches:'sl-branches'};
+  rSL(slMap[key], arr, key);
   document.getElementById(iid).value='';flash('sv-'+key);
 }
-function upLN(i,val){locs[i].name=val;sv('primo-locs',locs);saveConfig('locs',locs);buildSel();}
-function upLC(i,val){locs[i].color=val;sv('primo-locs',locs);saveConfig('locs',locs);flash('sv-locations');}
+function upLN(i,val){
+  var oldName=locs[i].name;
+  locs[i].name=val;
+  sv('primo-locs',locs);
+  configRemove('loc', oldName);
+  configAdd('loc', val, locs[i].color);
+  buildSel();
+}
+function upLC(i,val){
+  locs[i].color=val;
+  sv('primo-locs',locs);
+  configAdd('loc', locs[i].name, val);
+  flash('sv-locations');
+}
 function rmL(i){
   if(!confirm('Supprimer ce lieu ?'))return;
-  locs.splice(i,1);sv('primo-locs',locs);saveConfig('locs',locs);buildSel();rLL('sl-locations',locs);flash('sv-locations');
+  var name=locs[i].name;
+  locs.splice(i,1);sv('primo-locs',locs);
+  configRemove('loc', name);
+  buildSel();rLL('sl-locations',locs);flash('sv-locations');
 }
 function addLoc(){
   var name=document.getElementById('nl').value.trim();if(!name)return;
-  locs.push({name:name,color:document.getElementById('nlc').value});
-  sv('primo-locs',locs);saveConfig('locs',locs);buildSel();rLL('sl-locations',locs);
+  var color=document.getElementById('nlc').value;
+  locs.push({name:name,color:color});
+  sv('primo-locs',locs);
+  configAdd('loc', name, color);
+  buildSel();rLL('sl-locations',locs);
   document.getElementById('nl').value='';flash('sv-locations');
 }
 function flash(id){
