@@ -328,6 +328,8 @@ canvas{max-height:300px;}
         <button class="gs-clear" onclick="clearGsUrl()">✕ Déconnecter</button>
       </div>
       <div class="gs-result" id="gs-result"></div>
+      <button class="gs-save" onclick="forceSyncConfig()" style="margin-top:10px;background:#005500">☁️ Forcer la sync des listes</button>
+      <div id="sync-cfg-msg" style="margin-top:6px;font-size:12px;color:#FFCE00"></div>
     </div>
 
     <div class="howto">
@@ -529,8 +531,29 @@ function jsonp(params, cb, timeoutMs){
 // ══════════════════════════════════════════
 function saveConfig(key, data){
   if(!gsUrl) return;
-  var payload = JSON.stringify({action:'saveConfig', key:key, value:JSON.stringify(data)});
-  fetch(gsUrl, {method:'POST', body:payload}).catch(function(){});
+  jsonp({action:'saveConfig', key:key, value:JSON.stringify(data)}, function(){}, 8000);
+}
+
+function forceSyncConfig(){
+  var msg = document.getElementById('sync-cfg-msg');
+  msg.textContent = '🔄 Envoi en cours…';
+  var keys = ['products','brands','weights','branches','locs'];
+  var vals = [products, brands, weights, branches, locs];
+  var done = 0;
+  var errors = 0;
+  keys.forEach(function(k, i){
+    jsonp({action:'saveConfig', key:k, value:JSON.stringify(vals[i])}, function(d, err){
+      done++;
+      if(err) errors++;
+      if(done === keys.length){
+        if(errors === 0){
+          msg.textContent = '✅ Listes synchronisées avec Google Sheets !';
+        } else {
+          msg.textContent = '⚠️ ' + errors + ' erreur(s) — vérifiez la connexion.';
+        }
+      }
+    }, 10000);
+  });
 }
 
 function loadConfig(cb){
