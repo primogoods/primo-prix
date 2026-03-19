@@ -529,7 +529,8 @@ function jsonp(params, cb, timeoutMs){
 // ══════════════════════════════════════════
 function saveConfig(key, data){
   if(!gsUrl) return;
-  jsonp({action:'saveConfig', key:key, value:JSON.stringify(data)}, function(){}, 8000);
+  var payload = JSON.stringify({action:'saveConfig', key:key, value:JSON.stringify(data)});
+  fetch(gsUrl, {method:'POST', body:payload}).catch(function(){});
 }
 
 function loadConfig(cb){
