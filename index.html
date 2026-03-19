@@ -524,6 +524,29 @@ function jsonp(params, cb, timeoutMs){
   document.head.appendChild(script);
 }
 
+// ══════════════════════════════════════════
+//  CONFIG SYNC (products, brands, weights, branches, locs)
+// ══════════════════════════════════════════
+function saveConfig(key, data){
+  if(!gsUrl) return;
+  jsonp({action:'saveConfig', key:key, value:JSON.stringify(data)}, function(){}, 8000);
+}
+
+function loadConfig(cb){
+  if(!gsUrl){ cb(); return; }
+  jsonp({action:'readConfig'}, function(d, err){
+    if(!err && d && d.config){
+      var cfg = d.config;
+      if(cfg.products && cfg.products.length){ products = cfg.products; sv('primo-products', products); }
+      if(cfg.brands   && cfg.brands.length)  { brands   = cfg.brands;   sv('primo-brands',   brands);   }
+      if(cfg.weights  && cfg.weights.length) { weights  = cfg.weights;  sv('primo-weights',  weights);  }
+      if(cfg.branches && cfg.branches.length){ branches = cfg.branches; sv('primo-branches', branches); }
+      if(cfg.locs     && cfg.locs.length)    { locs     = cfg.locs;     sv('primo-locs',     locs);     }
+    }
+    cb();
+  }, 10000);
+}
+
 function loadSheet(){
   if(!gsUrl){setSS('idle','Non connecté');return;}
   document.getElementById('rbody').innerHTML='<div class="load-msg">🔄 Chargement depuis Google Sheets…</div>';
