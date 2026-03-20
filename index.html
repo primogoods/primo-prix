@@ -422,7 +422,7 @@ var brands   = ld('primo-brands',   D_BRANDS.slice());
 var weights  = ld('primo-weights',  D_WEIGHTS.slice());
 var branches = ld('primo-branches', D_BRANCHES.slice());
 var locs     = ld('primo-locs',     D_LOCS.map(function(l){return{name:l.name,color:l.color};}));
-var gsUrl    = 'https://script.google.com/macros/s/AKfycbwW2BFzSlBuHAckuwWbPHfS3tc9fCoMhKZ-f7D_CaNAyuessUgzNxdAWqG9dxznIcE2/exec';
+var gsUrl    = 'https://script.google.com/macros/s/AKfycby9ESJpWjF7w-iraBng0VvpPB2JzZ6XXVbUieS_nzMrOctp1YCll9k3TAoIO3gd8v6e/exec';
 var cBP=null, cTR=null;
 
 function ld(k,d){try{var v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch(e){return d;}}
@@ -478,7 +478,7 @@ function setSS(state,msg){
 }
 
 // Core JSONP caller — injects a <script> tag, avoids all CORS issues
-function jsonp(params, cb, timeoutMs){
+function jsonp(params, cb, timeoutMs, silent){
   if(!gsUrl){cb(null,'No URL');return;}
   var cbName='_prcb'+(_cbCount++);
   var timer=null;
@@ -490,8 +490,8 @@ function jsonp(params, cb, timeoutMs){
     var s=document.getElementById(cbName);
     if(s)s.parentNode.removeChild(s);
     delete window[cbName];
-    if(data && data.status==='ok'){setSS('synced','✓');cb(data,null);}
-    else{setSS('error','Erreur');cb(null,(data&&data.message)||'err');}
+    if(data && data.status==='ok'){if(!silent)setSS('synced','✓');cb(data,null);}
+    else{if(!silent)setSS('error','Erreur');cb(null,(data&&data.message)||'err');}
   };
 
   timer=setTimeout(function(){
@@ -499,7 +499,7 @@ function jsonp(params, cb, timeoutMs){
     var s=document.getElementById(cbName);
     if(s)s.parentNode.removeChild(s);
     delete window[cbName];
-    setSS('error','Timeout');
+    if(!silent)setSS('error','Timeout');
     cb(null,'timeout');
   }, timeoutMs||12000);
 
@@ -520,7 +520,7 @@ function jsonp(params, cb, timeoutMs){
     clearTimeout(timer);
     if(script.parentNode)script.parentNode.removeChild(script);
     delete window[cbName];
-    setSS('error','Hors ligne');
+    if(!silent)setSS('error','Hors ligne');
     cb(null,'network error');
   };
   document.head.appendChild(script);
@@ -549,13 +549,13 @@ function loadConfig(cb){
 // Add one item to sheet config (tiny URL — always works)
 function configAdd(type, value, extra){
   if(!gsUrl) return;
-  jsonp({action:'addConfig', type:type, value:value, extra:extra||''}, function(){}, 8000);
+  jsonp({action:'addConfig', type:type, value:value, extra:extra||''}, function(){}, 8000, true);
 }
 
 // Remove one item from sheet config
 function configRemove(type, value){
   if(!gsUrl) return;
-  jsonp({action:'removeConfig', type:type, value:value}, function(){}, 8000);
+  jsonp({action:'removeConfig', type:type, value:value}, function(){}, 8000, true);
 }
 
 // Force push ALL local lists to sheet (used by the sync button)
@@ -588,7 +588,7 @@ function forceSyncConfig(){
       done++;
       msg.textContent = '🔄 '+done+'/'+items.length+'…';
       setTimeout(next, 150); // small delay between calls
-    }, 8000);
+    }, 8000, true);
   }
   next();
 }
